@@ -8,6 +8,7 @@ const app = express();
 
 app.use(cors());
 app.use(express.json());
+app.use(express.static("public"));
 
 const SKILLS = [
   "react", "react native", "next.js", "nextjs",
@@ -275,47 +276,43 @@ app.get("/api/jobs", async (req, res) => {
     }
 
       const requestedPage = Math.max(Number(page) || 1, 1);
-      const pagesToFetch = 3;
       const allResults = [];
       let successfulPages = 0;
+      let sourceResultCount = 0;
 
-      for (
-        let currentPage = requestedPage;
-        currentPage < requestedPage + pagesToFetch;
-        currentPage++
-      ) {
-        try {
-          const url = new URL(
-            `https://api.adzuna.com/v1/api/jobs/in/search/${currentPage}`
-          );
+      try {
+        const url = new URL(
+          `https://api.adzuna.com/v1/api/jobs/in/search/${requestedPage}`
+        );
 
-          url.searchParams.set("app_id", appId);
-          url.searchParams.set("app_key", appKey);
-          url.searchParams.set("what", String(query));
-          url.searchParams.set("where", String(location));
-          url.searchParams.set("results_per_page", "50");
-          url.searchParams.set("content-type", "application/json");
+        url.searchParams.set("app_id", appId);
+        url.searchParams.set("app_key", appKey);
+        url.searchParams.set("what", String(query));
+        url.searchParams.set("where", String(location));
+        url.searchParams.set("results_per_page", "50");
+        url.searchParams.set("content-type", "application/json");
 
-          const response = await fetch(url, {
-            signal: AbortSignal.timeout(8000)
-          });
+        const response = await fetch(url, {
+          signal: AbortSignal.timeout(8000)
+        });
 
-          if (!response.ok) {
-            console.warn(
-              `Adzuna page ${currentPage} failed with status ${response.status}`
-            );
-            continue;
-          }
-
-          const data = await response.json();
-          allResults.push(...(data.results || []));
-          successfulPages++;
-        } catch (error) {
+        if (!response.ok) {
           console.warn(
-            `Adzuna page ${currentPage} failed:`,
-            error?.code || error?.message || error
+            `Adzuna page ${requestedPage} failed with status ${response.status}`
           );
+        } else {
+          const data = await response.json();
+          const results = data.results || [];
+
+          allResults.push(...results);
+          sourceResultCount = results.length;
+          successfulPages = 1;
         }
+      } catch (error) {
+        console.warn(
+          `Adzuna page ${requestedPage} failed:`,
+          error?.code || error?.message || error
+        );
       }
 
       if (successfulPages === 0) {
@@ -381,6 +378,9 @@ app.get("/api/jobs", async (req, res) => {
       jobs = jobs.slice(0, 50);
     res.json({
       count: jobs.length,
+      page: requestedPage,
+      pageSize: jobs.length,
+      hasMore: sourceResultCount === 50,
       filters: {
         query,
         location,
