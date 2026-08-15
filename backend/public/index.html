@@ -1,0 +1,120 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#080b14">
+  <title>JobRadar — Smart Job Search</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+
+<header class="topbar">
+  <a class="brand" href="/">
+    <span class="logo">J</span>
+    <span>Job<span>Radar</span></span>
+  </a>
+  <div class="top-actions">
+    <button id="savedToggle" class="saved-toggle">
+      ♡ Saved <span id="savedCount">0</span>
+    </button>
+    <span class="status-dot">LIVE JOB SEARCH</span>
+  </div>
+</header>
+
+<main>
+
+<section class="hero">
+  <div class="hero-copy">
+    <div class="eyebrow">SMART JOB DISCOVERY</div>
+    <h1>Find jobs that<br><span>fit you.</span></h1>
+    <p>Search fresh opportunities and let JobRadar rank the most relevant jobs first.</p>
+  </div>
+
+  <form id="searchForm" class="search-panel">
+    <div class="search-main">
+      <label>
+        <small>What are you looking for?</small>
+        <input id="query" value="developer" placeholder="React, Python, Node...">
+      </label>
+
+      <label>
+        <small>Location</small>
+        <input id="location" value="India" placeholder="India, Mumbai...">
+      </label>
+
+      <button type="submit">Search <b>→</b></button>
+    </div>
+
+    <div class="filters">
+      <label>
+        <small>Experience</small>
+        <select id="experience">
+          <option value="">All experience</option>
+          <option value="fresher">Fresher</option>
+        </select>
+      </label>
+
+      <label>
+        <small>Type</small>
+        <select id="type">
+          <option value="">All types</option>
+          <option value="internship">Internship</option>
+        </select>
+      </label>
+
+      <label>
+        <small>Skill</small>
+        <select id="skill">
+          <option value="">Any skill</option>
+          <option value="react">React</option>
+          <option value="javascript">JavaScript</option>
+          <option value="typescript">TypeScript</option>
+          <option value="node.js">Node.js</option>
+          <option value="python">Python</option>
+          <option value="java">Java</option>
+          <option value="sql">SQL</option>
+          <option value="aws">AWS</option>
+        </select>
+      </label>
+
+      <label class="remote">
+        <input id="remote" type="checkbox">
+        <span>Remote only</span>
+      </label>
+    </div>
+  </form>
+</section>
+
+<section class="results">
+  <div class="results-head">
+    <div>
+      <small>JOB MATCHES</small>
+      <h2 id="resultsTitle">Recommended jobs</h2>
+    </div>
+    <div id="resultCount"></div>
+  </div>
+
+  <div id="status"></div>
+  <div id="jobs"></div>
+
+    <div class="load-more-wrap">
+      <button id="loadMore" class="load-more hidden" type="button">
+        Load more jobs
+      </button>
+    </div>
+</section>
+
+</main>
+
+<div id="modal" class="modal hidden">
+  <div class="modal-bg"></div>
+  <div class="modal-card">
+    <button id="closeModal">×</button>
+    <div id="modalBody"></div>
+  </div>
+</div>
+
+<script src="/app.js"></script>
+</body>
+</html>
