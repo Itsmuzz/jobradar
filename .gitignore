@@ -2,3 +2,7 @@
 scoring.before-scoring-v2.js
 
 backend/.env
+
+# Local backup files
+backend/*.backup.js
+backend/*.before-*.js
