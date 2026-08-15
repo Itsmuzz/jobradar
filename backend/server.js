@@ -185,74 +185,88 @@ app.get("/api/jobs", async (req, res) => {
       });
     }
 
-    const url = new URL(
-      `https://api.adzuna.com/v1/api/jobs/in/search/${Number(page) || 1}`
-    );
+      const requestedPage = Math.max(Number(page) || 1, 1);
+      const pagesToFetch = 3;
+      const allResults = [];
 
-    url.searchParams.set("app_id", appId);
-    url.searchParams.set("app_key", appKey);
-    url.searchParams.set("what", String(query));
-    url.searchParams.set("where", String(location));
-    url.searchParams.set("results_per_page", "50");
-    url.searchParams.set("content-type", "application/json");
+      for (
+        let currentPage = requestedPage;
+        currentPage < requestedPage + pagesToFetch;
+        currentPage++
+      ) {
+        const url = new URL(
+          `https://api.adzuna.com/v1/api/jobs/in/search/${currentPage}`
+        );
 
-    const response = await fetch(url);
+        url.searchParams.set("app_id", appId);
+        url.searchParams.set("app_key", appKey);
+        url.searchParams.set("what", String(query));
+        url.searchParams.set("where", String(location));
+        url.searchParams.set("results_per_page", "50");
+        url.searchParams.set("content-type", "application/json");
 
-    if (!response.ok) {
-      return res.status(response.status).json({
-        error: "Adzuna request failed"
-      });
-    }
+        const response = await fetch(url);
 
-    const data = await response.json();
+        if (!response.ok) {
+          return res.status(response.status).json({
+            error: "Adzuna request failed"
+          });
+        }
 
-    let jobs = (data.results || []).map(normalizeJob);
+        const data = await response.json();
+        allResults.push(...(data.results || []));
+      }
+
+      let jobs = allResults.map(normalizeJob);
+
       // Remove jobs older than 30 days
       jobs = removeOldJobs(jobs, 30);
 
+      jobs = removeDuplicates(jobs);
 
-    jobs = removeDuplicates(jobs);
-
-    if (experience === "fresher") {
-      jobs = jobs.filter(job => job.fresherFriendly);
-    }
-
-    if (type === "internship") {
-      jobs = jobs.filter(job => job.type === "internship");
-    }
-
-    if (remote === "true") {
-      jobs = jobs.filter(job => job.workMode === "remote");
-    }
-
-    if (skill) {
-      const requestedSkill = String(skill).toLowerCase();
-
-      jobs = jobs.filter(job =>
-        job.skills.some(jobSkill =>
-          jobSkill.toLowerCase() === requestedSkill
-        )
-      );
-    }
-
-    jobs = jobs.map(job => {
-      const matchScore = calculateJobScore(job);
-
-      return {
-        ...job,
-        matchScore,
-        matchLabel: getMatchLabel(matchScore)
-      };
-    });
-
-    jobs.sort((a, b) => {
-      if (b.matchScore !== a.matchScore) {
-        return b.matchScore - a.matchScore;
+      if (experience === "fresher") {
+        jobs = jobs.filter(job => job.fresherFriendly);
       }
 
-      return new Date(b.created).getTime() - new Date(a.created).getTime();
-    });
+      if (type === "internship") {
+        jobs = jobs.filter(job => job.type === "internship");
+      }
 
+      if (remote === "true") {
+        jobs = jobs.filter(job => job.workMode === "remote");
+      }
+
+      if (skill) {
+        const requestedSkill = String(skill).toLowerCase();
+
+        jobs = jobs.filter(job =>
+          job.skills.some(jobSkill =>
+            jobSkill.toLowerCase() === requestedSkill
+          )
+        );
+      }
+
+      jobs = jobs.map(job => {
+        const matchScore = calculateJobScore(job, query);
+
+        return {
+          ...job,
+          matchScore,
+          matchLabel: getMatchLabel(matchScore)
+        };
+      });
+
+      jobs.sort((a, b) => {
+        if (b.matchScore !== a.matchScore) {
+          return b.matchScore - a.matchScore;
+        }
+
+        return new Date(b.created).getTime() -
+          new Date(a.created).getTime();
+      });
+
+      // Keep the best 50 jobs for the API response
+      jobs = jobs.slice(0, 50);
     res.json({
       count: jobs.length,
       filters: {
