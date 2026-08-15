@@ -259,6 +259,26 @@ function toggleSave(job){
 
   localStorage.setItem("jobradar_saved", JSON.stringify(savedJobs));
   updateSavedCount();
+
+document.getElementById("savedToggle")?.addEventListener("click", ()=>{
+  const ids = Object.keys(savedJobs);
+
+  if(!ids.length){
+    statusEl.textContent = "No saved jobs yet.";
+    return;
+  }
+
+  const jobs = ids.map(id => savedJobs[id]).filter(Boolean);
+
+  jobsEl.innerHTML = jobs.map((job,i) => card(job,i)).join("");
+  resultsTitle.textContent = "Saved jobs";
+  resultCount.textContent = `${jobs.length} saved jobs`;
+  loadMoreBtn.classList.add("hidden");
+  statusEl.textContent = "";
+
+  bindJobActions();
+});
+
 }
 
 function updateSavedCount(){
