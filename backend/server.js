@@ -41,15 +41,48 @@ function detectSkills(text) {
 }
 
 function detectExperience(text) {
-  const lower = text.toLowerCase();
+  const lower = String(text || "").toLowerCase();
 
+  // Explicit fresher signals.
   if (
     /\b(fresher|freshers|entry[- ]level|graduate|graduates|no experience)\b/i.test(lower)
   ) {
     return "fresher";
   }
 
-  const years = [...lower.matchAll(/(\d+)\+?\s*(?:years?|yrs?)/gi)]
+  // 0-1 year / 0 to 1 year should be treated as fresher.
+  if (
+    /\b0\s*(?:-|–|to)\s*1\s*(?:years?|yrs?)\b/i.test(lower)
+  ) {
+    return "fresher";
+  }
+
+  // Ranges such as 5-8 years.
+  const ranges = [
+    ...lower.matchAll(
+      /\b(\d+)\s*(?:-|–|to)\s*(\d+)\s*(?:years?|yrs?)\b/gi
+    )
+  ];
+
+  if (ranges.length) {
+    const minYears = Number(ranges[0][1]);
+    const maxYears = Number(ranges[0][2]);
+
+    if (Number.isFinite(minYears) && Number.isFinite(maxYears)) {
+      if (minYears === 0 && maxYears <= 1) {
+        return "fresher";
+      }
+
+      return `${minYears}-${maxYears} years`;
+    }
+  }
+
+  // Single values such as 5+ years or 9 years.
+  const years = [
+    ...lower.matchAll(
+      /\b(\d+)\+?\s*(?:years?|yrs?)\b/gi
+    )
+  ]
     .map(match => Number(match[1]))
     .filter(Number.isFinite);
 
@@ -85,13 +118,26 @@ function detectWorkMode(text) {
 }
 
 function isFresherFriendly(text) {
-  const lower = text.toLowerCase();
+  const lower = String(text || "").toLowerCase();
 
-  return (
-    /\b(fresher|freshers|entry[- ]level|graduate|graduates|0[- ]?1\s*years?|no experience)\b/i.test(
-      lower
-    )
-  );
+  // Explicitly experienced roles should not be treated as fresher jobs.
+  const experiencedPattern =
+    /\b(?:1\+|2\+|3\+|4\+|5\+|6\+|7\+|8\+|9\+|\d{2,}\+?)\s*(?:years?|yrs?)\b/i;
+
+  // Explicit fresher signals.
+  const fresherPattern =
+    /\b(?:fresher|freshers|entry[- ]level|graduate|graduates|no experience)\b/i;
+
+  // Explicit 0-1 year signals.
+  const zeroToOnePattern =
+    /\b0\s*(?:-|–|to)\s*1\s*(?:years?|yrs?)\b/i;
+
+  // If the job explicitly requires 1+ years or more, don't classify it as fresher.
+  if (experiencedPattern.test(lower)) {
+    return false;
+  }
+
+  return fresherPattern.test(lower) || zeroToOnePattern.test(lower);
 }
 
 function makeSummary(description) {
@@ -142,6 +188,49 @@ function removeDuplicates(jobs) {
   });
 }
 
+
+function isQueryRelevant(job, query = "") {
+  const q = String(query).toLowerCase().trim();
+
+  if (!q) return true;
+
+  const title = String(job.title || "").toLowerCase();
+  const skills = (job.skills || []).map(String).map(x => x.toLowerCase());
+
+  const aliases = {
+    react: ["react", "react.js", "reactjs", "react native"],
+    "react native": ["react native", "react"],
+    node: ["node", "node.js", "nodejs", "express", "backend"],
+    "node.js": ["node", "node.js", "nodejs", "express", "backend"],
+    python: ["python", "django", "flask", "pyspark"],
+    javascript: ["javascript", "js", "react", "node", "node.js"],
+    typescript: ["typescript", "ts"],
+    java: ["java", "spring"],
+    frontend: ["frontend", "front-end", "react", "angular", "vue"],
+    backend: ["backend", "back-end", "node", "node.js", "python", "java"],
+    developer: ["developer", "engineer", "programmer", "software"],
+    engineer: ["engineer", "developer", "software"]
+  };
+
+  const terms = aliases[q] || [q];
+
+  const titleMatch = terms.some(term => title.includes(term));
+  const skillMatch = terms.some(term =>
+    skills.some(skill => skill === term || skill.includes(term) || term.includes(skill))
+  );
+
+  if (titleMatch || skillMatch) {
+    return true;
+  }
+
+  // For generic searches, allow a strong technical signal in the title.
+  if (q === "developer" || q === "engineer") {
+    return /\b(software|developer|engineer|programmer|developer)\b/i.test(title);
+  }
+
+  return false;
+}
+
 function removeOldJobs(jobs, maxAgeDays = 30) {
   const now = Date.now();
   const maxAge = maxAgeDays * 24 * 60 * 60 * 1000;
@@ -188,41 +277,64 @@ app.get("/api/jobs", async (req, res) => {
       const requestedPage = Math.max(Number(page) || 1, 1);
       const pagesToFetch = 3;
       const allResults = [];
+      let successfulPages = 0;
 
       for (
         let currentPage = requestedPage;
         currentPage < requestedPage + pagesToFetch;
         currentPage++
       ) {
-        const url = new URL(
-          `https://api.adzuna.com/v1/api/jobs/in/search/${currentPage}`
-        );
+        try {
+          const url = new URL(
+            `https://api.adzuna.com/v1/api/jobs/in/search/${currentPage}`
+          );
 
-        url.searchParams.set("app_id", appId);
-        url.searchParams.set("app_key", appKey);
-        url.searchParams.set("what", String(query));
-        url.searchParams.set("where", String(location));
-        url.searchParams.set("results_per_page", "50");
-        url.searchParams.set("content-type", "application/json");
+          url.searchParams.set("app_id", appId);
+          url.searchParams.set("app_key", appKey);
+          url.searchParams.set("what", String(query));
+          url.searchParams.set("where", String(location));
+          url.searchParams.set("results_per_page", "50");
+          url.searchParams.set("content-type", "application/json");
 
-        const response = await fetch(url);
-
-        if (!response.ok) {
-          return res.status(response.status).json({
-            error: "Adzuna request failed"
+          const response = await fetch(url, {
+            signal: AbortSignal.timeout(8000)
           });
-        }
 
-        const data = await response.json();
-        allResults.push(...(data.results || []));
+          if (!response.ok) {
+            console.warn(
+              `Adzuna page ${currentPage} failed with status ${response.status}`
+            );
+            continue;
+          }
+
+          const data = await response.json();
+          allResults.push(...(data.results || []));
+          successfulPages++;
+        } catch (error) {
+          console.warn(
+            `Adzuna page ${currentPage} failed:`,
+            error?.code || error?.message || error
+          );
+        }
+      }
+
+      if (successfulPages === 0) {
+        return res.status(502).json({
+          error: "Unable to fetch jobs from Adzuna"
+        });
       }
 
       let jobs = allResults.map(normalizeJob);
+
+
 
       // Remove jobs older than 30 days
       jobs = removeOldJobs(jobs, 30);
 
       jobs = removeDuplicates(jobs);
+
+      // Remove jobs that are not relevant to the user's search query.
+      jobs = jobs.filter(job => isQueryRelevant(job, query));
 
       if (experience === "fresher") {
         jobs = jobs.filter(job => job.fresherFriendly);

@@ -1,27 +1,26 @@
 const POSITIVE_SIGNALS = [
-  ["fresher", 15],
-  ["freshers", 15],
-  ["entry level", 15],
-  ["entry-level", 15],
-  ["no experience", 15],
-  ["0-1 year", 15],
-  ["0–1 year", 15],
-  ["0 to 1 year", 15],
-  ["graduate", 8],
-  ["intern", 15],
-  ["internship", 15],
-  ["trainee", 12]
+  ["fresher", 20],
+  ["freshers", 20],
+  ["entry level", 20],
+  ["entry-level", 20],
+  ["no experience", 20],
+  ["0-1 year", 20],
+  ["0–1 year", 20],
+  ["0 to 1 year", 20],
+  ["graduate", 10],
+  ["intern", 20],
+  ["internship", 20],
+  ["trainee", 15]
 ];
 
 const SENIOR_SIGNALS = [
-  ["senior", -15],
-  ["lead", -20],
-  ["principal", -25],
+  ["senior", -18],
+  ["lead", -22],
+  ["principal", -30],
   ["director", -35],
   ["manager", -30],
   ["head of", -35],
-  ["staff engineer", -25],
-  ["architect", -20]
+  ["staff engineer", -25]
 ];
 
 const IRRELEVANT_ROLES = [
@@ -30,108 +29,111 @@ const IRRELEVANT_ROLES = [
   "sales executive",
   "account manager",
   "business development manager",
-  "business development executive",
-  "administrative assistant",
-  "delivery manager"
+  "business development executive"
 ];
 
-function escapeRegExp(value) {
-  return String(value).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-}
-
-function containsWord(text, value) {
-  const pattern = new RegExp(
-    `(^|[^a-z0-9])${escapeRegExp(value)}(?=$|[^a-z0-9])`,
-    "i"
-  );
-
-  return pattern.test(text);
-}
-
-function calculateJobScore(job, query = "") {
-  const title = String(job.title || "").toLowerCase();
-  const description = String(job.description || "").toLowerCase();
-  const skills = (job.skills || []).map(skill => String(skill).toLowerCase());
-
-  const text = `${title} ${description}`;
-
-  let score = 30;
-
-  /*
-   * QUERY RELEVANCE
-   * This is intentionally the strongest part of the score.
-   */
-  const queryTerms = String(query)
+function normalizeQuery(query) {
+  return String(query || "")
     .toLowerCase()
-    .split(/[\s,]+/)
-    .map(term => term.trim())
-    .filter(Boolean);
+    .trim()
+    .replace(/\.js\b/g, "js")
+    .replace(/\s+/g, " ");
+}
 
-  if (queryTerms.length) {
-    let titleMatches = 0;
-    let skillMatches = 0;
-    let descriptionMatches = 0;
+function normalizeText(text) {
+  return String(text || "")
+    .toLowerCase()
+    .replace(/react\.js/g, "reactjs")
+    .replace(/react js/g, "reactjs")
+    .replace(/node\.js/g, "nodejs")
+    .replace(/node js/g, "nodejs")
+    .replace(/next\.js/g, "nextjs")
+    .replace(/\s+/g, " ");
+}
 
-    for (const term of queryTerms) {
-      if (containsWord(title, term)) {
-        titleMatches++;
-      }
+function calculateQueryRelevance(job, query) {
+  const q = normalizeQuery(query);
 
-      if (skills.some(skill => containsWord(skill, term))) {
-        skillMatches++;
-      }
+  if (!q) return 0;
 
-      if (containsWord(description, term)) {
-        descriptionMatches++;
-      }
+  const title = normalizeText(job.title);
+  const description = normalizeText(job.description);
+  const skills = (job.skills || []).map(normalizeText);
+
+  const queryNormalized = normalizeText(q);
+
+  let relevance = 0;
+
+  // Exact skill match
+  if (skills.some(skill => skill === queryNormalized)) {
+    relevance += 35;
+  }
+
+  // Query in title
+  if (title.includes(queryNormalized)) {
+    relevance += 35;
+  }
+
+  // Query in description
+  if (description.includes(queryNormalized)) {
+    relevance += 15;
+  }
+
+  // Handle React / ReactJS / React Native
+  if (queryNormalized === "react") {
+    if (title.includes("react")) relevance += 20;
+
+    if (skills.some(skill => skill === "react")) {
+      relevance += 15;
     }
 
-    if (titleMatches > 0) {
-      score += 30;
-    }
-
-    if (skillMatches > 0) {
-      score += 15;
-    }
-
-    if (descriptionMatches > 0) {
-      score += 10;
-    }
-
-    /*
-     * If the query does not appear meaningfully anywhere,
-     * heavily reduce the job.
-     */
-    if (
-      titleMatches === 0 &&
-      skillMatches === 0 &&
-      descriptionMatches === 0
-    ) {
-      score -= 30;
+    if (description.includes("react")) {
+      relevance += 10;
     }
   }
 
-  /*
-   * FRESHER / ENTRY LEVEL SIGNALS
-   */
+  // Handle Node / Node.js
+  if (queryNormalized === "node" || queryNormalized === "nodejs") {
+    if (title.includes("node")) relevance += 20;
+
+    if (skills.some(skill => skill === "nodejs" || skill === "node")) {
+      relevance += 15;
+    }
+
+    if (description.includes("node")) {
+      relevance += 10;
+    }
+  }
+
+  // Prevent relevance from becoming excessive
+  return Math.min(relevance, 70);
+}
+
+function calculateJobScore(job, query) {
+  const text = normalizeText(
+    `${job.title} ${job.description}`
+  );
+
+  let score = 30;
+
+  // Query relevance is the most important factor
+  score += calculateQueryRelevance(job, query);
+
+  // Positive fresher/intern signals
   for (const [signal, points] of POSITIVE_SIGNALS) {
     if (text.includes(signal)) {
       score += points;
     }
   }
 
-  /*
-   * SENIORITY
-   */
+  // Seniority penalties
   for (const [signal, points] of SENIOR_SIGNALS) {
-    if (containsWord(text, signal)) {
+    if (text.includes(signal)) {
       score += points;
     }
   }
 
-  /*
-   * EXPERIENCE
-   */
+  // Explicit years of experience
   const years = [];
 
   for (const match of text.matchAll(
@@ -148,58 +150,32 @@ function calculateJobScore(job, query = "") {
     const minYears = Math.min(...years);
 
     if (minYears <= 1) {
-      score += 15;
+      score += 20;
     } else if (minYears <= 2) {
-      score += 10;
+      score += 8;
     } else if (minYears <= 3) {
-      score += 5;
+      score -= 8;
     } else if (minYears <= 5) {
-      score -= 5;
-    } else if (minYears <= 8) {
-      score -= 15;
+      score -= 18;
     } else {
       score -= 25;
     }
   }
 
-  /*
-   * TECHNICAL SKILLS
-   */
-  if (skills.length) {
-    score += Math.min(skills.length * 2, 10);
+  // Relevant technical skills
+  if (job.skills?.length) {
+    score += Math.min(job.skills.length * 3, 15);
   }
 
-  /*
-   * IRRELEVANT ROLES
-   */
+  // Irrelevant job categories
   for (const role of IRRELEVANT_ROLES) {
     if (text.includes(role)) {
-      score -= 30;
+      score -= 50;
       break;
     }
   }
 
-  /*
-   * FRESHNESS
-   */
-  const createdTime = new Date(job.created).getTime();
-
-  if (Number.isFinite(createdTime)) {
-    const ageDays = Math.max(
-      0,
-      (Date.now() - createdTime) / (24 * 60 * 60 * 1000)
-    );
-
-    if (ageDays <= 7) {
-      score += 5;
-    } else if (ageDays <= 14) {
-      score += 3;
-    } else if (ageDays <= 30) {
-      score += 1;
-    }
-  }
-
-  return Math.max(0, Math.min(100, Math.round(score)));
+  return Math.max(0, Math.min(100, score));
 }
 
 function getMatchLabel(score) {
